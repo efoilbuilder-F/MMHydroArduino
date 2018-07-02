@@ -55,11 +55,19 @@ uint32_t lastTimeReceived = 0;
 int timeoutMax = 1000;
 //Servo esc; //Creating a servo class that is called esc, because ESCs are controlled just like Servos. //F:we should not need this anymore, as we use serial communication to the vesc for control now.
 
+//F: including all necessary files from the VescUartLib
+#define DEBUG //enable debug output in VescUartLib
+#include "Config.h"
+#include "VescUart.h"
+#include "datatypes.h"
+
+struct bldcMeasure measuredVal;   //F: this is a global variable to store the data received from the VESC
+
 //F: patched all of this out, again this functionality shall be provided via serial comm now.
 //int escpin = 10; // esc pwm pin This is the only one i had left on my board...
 //int timer = 0; // esc shutoff
 //int val = 0;
-int text; //F: this is used to receive data from the nrf24 wireless device, reactivated this global var 
+unsigned int text; //F: this is used to receive data from the nrf24 wireless device, reactivated this global var changed it to a unsigned type as this is more apropriate for the data which is to be stored here (0 to 255 positive transmitter values)
 ////Min and max pulse
 //int minPulseRate = 1500;
 //int maxPulseRate = 2000;
@@ -68,6 +76,19 @@ void setup()
 {
   lcd.clear();
   ///Serial.begin(9600); //needed for the seial monitor Why is this disabled? I needed the D1 pin for the display, because I ran out of pins and needed D10 for PWM for the signal to the ESC. So I use D1 which is ususually used for serial communications, If you want to debug this code, make this line live and change the pin used for the ESC . 
+  //F: initialising serial for communication with VESC. In this case debug output is also on the first Serial, this should not be much of a problem. Disable all debug output in any real use. You can
+    //change the serial port used in Config.h
+    //the programming and communication with the Arduino IDE is also on this port. The USB to serial converter for Arduino IDE is always connected to the RX and TX pins via 1kOhm resistors accroding to this schematic: https://www.arduino.cc/en/uploads/Main/ArduinoNanoManual23.pdf
+    //In order for this usb to serial converter to not interfere your application serial connection has to have low resistance.
+      //Setup UART port
+        SetSerialPort(&SERIALIO); //This sets the VescUartLib to use the Serial port of the Arduino defined in Config.h
+        SERIALIO.begin(115200);
+      #ifdef DEBUG
+        //SEtup debug port
+        SetDebugSerialPort(&DEBUGSERIAL); //This sets the VescUartLib to use the Serial port of the Arduino defined in Config.h
+        DEBUGSERIAL.begin(115200);
+      #endif
+  
   pinMode(BatRelay, OUTPUT); //Defines the pin as an output
   pinMode(SparkRelay, OUTPUT); //Defines the pin as an output
   digitalWrite(SparkRelay, HIGH);
@@ -101,7 +122,7 @@ void setup()
 void loop()
 {
   MainSwitchState = digitalRead(MainSwitch); //This stuff will check if the main switch on the board is tuned on. If it is, it will perform anti spark routine, but only if the anti spark was not already performed.
-
+  static unsigned long lastVescDataReadTime = 0;
 
   if (MainSwitchState == HIGH && ChargeState == LOW) //Checks if the Start Switch is ON or OFF (High means ON) & if the anti spark state is low, so the capacitors are not charged.
   {
@@ -126,7 +147,18 @@ void loop()
   {
     Read_Temperature(); //performs a temperature reading as found in the third tab.
   }
-
+  //F: trying to get all available data from a vesc in a 5 sec interval
+  if ((millis() - lastVescDataReadTime) >= 5000)  //if the current time from Arduiono startup, called millis(), minus the Last Check Temp Time is bigger or equal than 2 second, read the temperature sensors.
+  {
+    lastVescDataReadTime = millis();
+     if (VescUartGetValue(measuredVal)) {
+      SerialPrint(measuredVal);
+    }
+    else
+    {
+      DEBUGSERIAL.println("Failed to get data!");
+    }
+  }
 
   // THE FOLLOWING IS FOR WIRELESS COMMUNICATION:
 
@@ -147,6 +179,12 @@ void loop()
 
     // Write the PWM signal to the ESC (0-255).
     //esc.write(int(text)); //F:patched out classic PWM esc/vesc control
+    //F: now we need to convert the value to a floating point value between 0.00 and 1.00
+      //I'm trying to change as little as possible
+    unsigned int remotevalue = text; //F: this should be a value from 0 to 255 if I believe your own comments.
+    float dutydesired = ((float)remotevalue)/255; //F: this is now in 0 to 1 range
+    VescUartSetDuty(dutydesired); //F: initiate a transfer to vesc and set the duty cycle to the above value, you can confirm this with the VescTool
+    
     Serial.print("Throtle: ");
     Serial.println(text); //original
     lcd.setCursor(0, 0);
@@ -157,6 +195,7 @@ void loop()
   {
     // No speed is received within the timeout limit.
     //esc.write(0); //F: patching out PWM esc/vesc control
+    VescUartSetDuty((float)0.0); //F: setDutyCycle to 0 you could also stet the current to 0. This depends if you want full braking or just need to remove output power 
     Serial.println("Connection Lost");
     Serial.println((millis() - lastTimeReceived));
   }
