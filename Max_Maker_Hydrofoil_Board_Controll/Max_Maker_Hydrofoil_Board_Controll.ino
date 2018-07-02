@@ -36,13 +36,13 @@ uint32_t LastTempCheckTime = 0;
 
 //Variables for 1602 Display from https://howtomechatronics.com/tutorials/arduino/lcd-tutorial/
 #include <LiquidCrystal.h> // includes the LiquidCrystal Library 
-LiquidCrystal lcd(5, 6, 7, 8, 9, 1); // Creates an LC object. Parameters: (rs pin 5, enable pin 6, d4 pin 7, d5 pin 8, d6 pin9, d0 pin10 (used to be D10))
+LiquidCrystal lcd(5, 6, 7, 8, 9, 10); // Creates an LC object. Parameters: (rs pin 5, enable pin 6, d4 pin 7, d5 pin 8, d6 pin9, //F:xxwiring change herexxx //F: changed this back to pin 10 in order to free pin 1 for serial comminications on arduino nano TX == D1 and RX == D0, pay attention to pinout
 
 
-
+//F: the TRMH20 lib for nrf24 appears to be used. It compiles fine with this lib, but I can not test this due to total lack of nrf24 hardware.
 //Stuff for Wireless Communications Adapted from user MaB from efoil.builders. Thank you!
 //Good Tutorial for RF24: https://howtomechatronics.com/tutorials/arduino/arduino-wireless-communication-nrf24l01-tutorial/
-#include <Servo.h> //Using servo library to control ESC
+//#include <Servo.h> //Using servo library to control ESC //F:we should not need this anymore, as we use serial communication to the vesc for control now.
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
@@ -53,16 +53,17 @@ const uint64_t pipe = 0xE8E8F0F0E1LL;
 //bool recievedData = false;
 uint32_t lastTimeReceived = 0;
 int timeoutMax = 1000;
-Servo esc; //Creating a servo class that is called esc, because ESCs are controlled just like Servos.
+//Servo esc; //Creating a servo class that is called esc, because ESCs are controlled just like Servos. //F:we should not need this anymore, as we use serial communication to the vesc for control now.
 
-int escpin = 10; // esc pwm pin This is the only one i had left on my board...
-int timer = 0; // esc shutoff
-int val = 0;
-int text;
-//Min and max pulse
-int minPulseRate = 1500;
-int maxPulseRate = 2000;
-#
+//F: patched all of this out, again this functionality shall be provided via serial comm now.
+//int escpin = 10; // esc pwm pin This is the only one i had left on my board...
+//int timer = 0; // esc shutoff
+//int val = 0;
+int text; //F: this is used to receive data from the nrf24 wireless device, reactivated this global var 
+////Min and max pulse
+//int minPulseRate = 1500;
+//int maxPulseRate = 2000;
+//#
 void setup()
 {
   lcd.clear();
@@ -82,8 +83,9 @@ void setup()
 
 
   //Setup stuff for wireless communications adapted from user MaB from efoil.builders.
-  esc.attach(escpin, minPulseRate, maxPulseRate);
-  esc.write(0); // init esc with 0 value
+  //F: patching all classic esc communication via PWM out of the arduino firmware.
+    //esc.attach(escpin, minPulseRate, maxPulseRate);
+    //esc.write(0); // init esc with 0 value
   radio.begin();
   radio.setPALevel(RF24_PA_HIGH);
   radio.setDataRate(RF24_250KBPS);
@@ -144,7 +146,7 @@ void loop()
     //recievedData = false;
 
     // Write the PWM signal to the ESC (0-255).
-    esc.write(int(text));
+    //esc.write(int(text)); //F:patched out classic PWM esc/vesc control
     Serial.print("Throtle: ");
     Serial.println(text); //original
     lcd.setCursor(0, 0);
@@ -154,7 +156,7 @@ void loop()
   else if ((millis() - lastTimeReceived) > timeoutMax)
   {
     // No speed is received within the timeout limit.
-    esc.write(0);
+    //esc.write(0); //F: patching out PWM esc/vesc control
     Serial.println("Connection Lost");
     Serial.println((millis() - lastTimeReceived));
   }
